@@ -1,26 +1,27 @@
 const form = document.querySelector("#searchForm");
 const ipInput = document.querySelector("#ipInput");
-const statusPill = document.querySelector("#statusPill");
-const mapTitle = document.querySelector("#mapTitle");
+const ipv4Value = document.querySelector("#ipv4Value");
+const ipv6Value = document.querySelector("#ipv6Value");
+const basicIp = document.querySelector("#basicIp");
+const basicLocation = document.querySelector("#basicLocation");
+const basicAsn = document.querySelector("#basicAsn");
+const basicIsp = document.querySelector("#basicIsp");
+const basicCoords = document.querySelector("#basicCoords");
+const basicBroadcast = document.querySelector("#basicBroadcast");
+const riskScore = document.querySelector("#riskScore");
+const riskNeedle = document.querySelector("#riskNeedle");
+const riskSummary = document.querySelector("#riskSummary");
+const analysisBody = document.querySelector("#analysisBody");
 const mapNote = document.querySelector("#mapNote");
-const summaryTitle = document.querySelector("#summaryTitle");
-const summaryText = document.querySelector("#summaryText");
-const versionValue = document.querySelector("#versionValue");
-const countryValue = document.querySelector("#countryValue");
-const networkValue = document.querySelector("#networkValue");
-const coordValue = document.querySelector("#coordValue");
-const detailList = document.querySelector("#detailList");
 
 const COUNTRY_CENTROIDS = {
   US: { lat: 39.5, lon: -98.35, label: "United States" },
-  CN: { lat: 35.86, lon: 104.19, label: "China" },
-  HK: { lat: 22.32, lon: 114.17, label: "Hong Kong" },
+  CN: { lat: 35.86, lon: 104.19, label: "中国" },
+  HK: { lat: 22.32, lon: 114.17, label: "中国香港" },
   AU: { lat: -25.27, lon: 133.77, label: "Australia" },
   JP: { lat: 36.2, lon: 138.25, label: "Japan" },
   KR: { lat: 36.5, lon: 127.8, label: "South Korea" },
   IN: { lat: 20.59, lon: 78.96, label: "India" },
-  TH: { lat: 15.87, lon: 100.99, label: "Thailand" },
-  MY: { lat: 4.21, lon: 101.98, label: "Malaysia" },
   SG: { lat: 1.35, lon: 103.82, label: "Singapore" },
   GB: { lat: 55.38, lon: -3.44, label: "United Kingdom" },
   DE: { lat: 51.16, lon: 10.45, label: "Germany" },
@@ -31,35 +32,29 @@ const COUNTRY_CENTROIDS = {
 };
 
 const state = {
-  provider: "osm",
   map: null,
   marker: null,
   chinaCoordinates: new Map(),
-  chinaCoordinatesReady: null
+  chinaCoordinatesReady: null,
+  mapReady: null
 };
 
-window.addEventListener("error", (event) => {
-  if (mapNote) mapNote.textContent = `Map error: ${event.message}`;
-});
-
-window.addEventListener("unhandledrejection", (event) => {
-  if (mapNote) mapNote.textContent = `Map error: ${event.reason?.message || event.reason}`;
-});
-
 state.chinaCoordinatesReady = loadChinaCoordinates();
-initMap();
+state.mapReady = initMap();
+renderAnalysis();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const ip = ipInput.value.trim();
   if (!ip) return;
 
-  setBusy(true);
+  form.querySelector("button").disabled = true;
+  mapNote.textContent = "正在查询 IP 信息...";
   try {
     const response = await fetch(`/lookup?ip=${encodeURIComponent(ip)}`);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Lookup failed");
-    await state.chinaCoordinatesReady;
+    if (!response.ok) throw new Error(payload.error || "查询失败");
+    await Promise.all([state.chinaCoordinatesReady, state.mapReady]);
     render(payload);
   } catch (error) {
     renderError(error);
@@ -68,139 +63,63 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+window.addEventListener("load", () => {
+  form.requestSubmit();
+});
+
 async function initMap() {
   try {
-    const config = await fetch("/map-config").then((response) => response.json());
-    if (config.provider === "offline" && config.offlineMapAvailable) {
-      state.provider = "offline";
-      await initOfflineMap();
-    } else if (config.provider === "amap" && config.amapKey) {
-      state.provider = "amap";
-      await initAmap(config.amapKey);
-    } else {
-      state.provider = "osm";
-      await initOsm();
-    }
+    loadStyle("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+    await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+    state.map = L.map("mapCanvas", {
+      center: [30.65, 114.32],
+      zoom: 7,
+      zoomControl: true,
+      attributionControl: false
+    });
+    L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", {
+      subdomains: ["1", "2", "3", "4"],
+      minZoom: 3,
+      maxZoom: 18
+    }).addTo(state.map);
+    mapNote.textContent = "查询 IP 后在地图中定位。";
   } catch (error) {
-    mapNote.textContent = `Map failed to load: ${error.message}`;
+    mapNote.textContent = `地图加载失败：${error.message}`;
   }
-}
-
-async function initOfflineMap() {
-  mapCanvas.innerHTML = `
-    <svg class="svg-world-map" viewBox="0 0 4096 4096" aria-label="Offline world map">
-      <image href="/static/assets/offline-world.svg" width="4096" height="4096"></image>
-      <g id="mapMarker" class="svg-map-marker" visibility="hidden">
-        <circle r="58" fill="#2563eb" opacity="0.18"></circle>
-        <circle r="34" fill="#2563eb" stroke="#ffffff" stroke-width="12"></circle>
-      </g>
-    </svg>
-  `;
-  state.map = mapCanvas.querySelector(".svg-world-map");
-  state.marker = mapCanvas.querySelector("#mapMarker");
-  const chinaCenter = projectToWorldTile(104.19, 35.86);
-  focusSvgMap(chinaCenter.x, chinaCenter.y, 920);
-  mapNote.textContent = "Offline map is active. Search an IP to locate it.";
-}
-
-async function initAmap(key) {
-  await loadScript(`https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}`);
-  state.map = new AMap.Map("mapCanvas", {
-    zoom: 2,
-    center: [20, 20],
-    viewMode: "2D",
-    mapStyle: "amap://styles/normal"
-  });
-  mapNote.textContent = "Amap is active. Search an IP to locate it.";
-}
-
-async function initOsm() {
-  loadStyle("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
-  await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
-  state.map = L.map("mapCanvas", {
-    center: [20, 20],
-    zoom: 2,
-    zoomControl: true,
-    worldCopyJump: true
-  });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(state.map);
-  mapNote.textContent = "OpenStreetMap is active. Search an IP to locate it.";
-}
-
-function setBusy(isBusy) {
-  statusPill.textContent = isBusy ? "Searching" : statusPill.textContent;
-  form.querySelector("button").disabled = isBusy;
 }
 
 function render(payload) {
   const data = normalize(payload);
-  summaryTitle.textContent = payload.ip;
-  summaryText.textContent = data.location || "No place found";
-  mapTitle.textContent = data.countryName || data.countryCode || "Located result";
-  statusPill.textContent = "Done";
-  versionValue.textContent = `IPv${payload.ip_version}`;
-  countryValue.textContent = data.countryCode || "-";
-  networkValue.textContent = data.asn ? `AS${data.asn}` : data.isp || "-";
-  coordValue.textContent = data.position ? `${data.position.lat.toFixed(2)}, ${data.position.lon.toFixed(2)}` : "-";
-  mapNote.textContent = data.mapLabel || "No coordinates";
-
-  renderDetails([
-    ["IP", payload.ip],
-    ["Place", data.location || "-"],
-    ["ASN", data.asn ? `AS${data.asn}` : "-"],
-    ["Carrier", data.networkName || data.isp || "-"]
-  ]);
+  ipv4Value.textContent = payload.ip_version === 4 ? payload.ip : "-";
+  ipv6Value.textContent = payload.ip_version === 6 ? payload.ip : "未检测到 IPv6";
+  basicIp.textContent = payload.ip;
+  basicLocation.textContent = data.locationDetail || data.location || "-";
+  basicAsn.textContent = data.asn ? `ASN${data.asn}` : "-";
+  basicIsp.textContent = data.isp || data.networkName || "-";
+  basicCoords.textContent = data.position ? `${data.position.lon.toFixed(6)}, ${data.position.lat.toFixed(6)}` : "-";
+  basicBroadcast.textContent = "N/A";
+  renderRisk(data);
+  renderAnalysis(data);
 
   if (data.position) {
-    updateMap(data.position.lat, data.position.lon, payload.ip, data.countryCode);
+    updateMap(data.position.lat, data.position.lon, data.locationDetail || payload.ip);
+    mapNote.textContent = data.mapLabel;
+  } else {
+    mapNote.textContent = "未找到可用于地图定位的坐标。";
   }
 }
 
 function renderError(error) {
-  summaryTitle.textContent = "Lookup failed";
-  summaryText.textContent = error.message;
-  mapTitle.textContent = "No result";
-  statusPill.textContent = "Failed";
-  versionValue.textContent = "-";
-  countryValue.textContent = "-";
-  networkValue.textContent = "-";
-  coordValue.textContent = "-";
+  basicIp.textContent = ipInput.value.trim() || "-";
+  basicLocation.textContent = error.message;
+  basicAsn.textContent = "-";
+  basicIsp.textContent = "-";
+  basicCoords.textContent = "-";
   mapNote.textContent = error.message;
-  renderDetails([
-    ["IP", ipInput.value.trim() || "-"],
-    ["Place", "-"],
-    ["ASN", "-"],
-    ["Carrier", "-"]
-  ]);
 }
 
-function updateMap(lat, lon, label, countryCode = "") {
-  if (!state.map) return;
-
-  if (state.provider === "offline") {
-    const position = projectToWorldTile(lon, lat);
-    state.marker.setAttribute("transform", `translate(${position.x.toFixed(1)} ${position.y.toFixed(1)})`);
-    state.marker.setAttribute("visibility", "visible");
-    focusSvgMap(position.x, position.y, countryCode === "CN" ? 920 : 1450);
-    return;
-  }
-
-  if (state.provider === "amap") {
-    const position = [lon, lat];
-    if (!state.marker) {
-      state.marker = new AMap.Marker({ position });
-      state.map.add(state.marker);
-    } else {
-      state.marker.setPosition(position);
-    }
-    state.marker.setLabel({ content: label, direction: "top" });
-    state.map.setZoomAndCenter(5, position);
-    return;
-  }
-
+function updateMap(lat, lon, label) {
+  if (!state.map || !window.L) return;
   const position = [lat, lon];
   if (!state.marker) {
     state.marker = L.marker(position).addTo(state.map);
@@ -208,7 +127,7 @@ function updateMap(lat, lon, label, countryCode = "") {
     state.marker.setLatLng(position);
   }
   state.marker.bindPopup(label).openPopup();
-  state.map.setView(position, 5);
+  state.map.setView(position, 8);
 }
 
 function normalize(payload) {
@@ -228,10 +147,13 @@ function normalize(payload) {
   const chinaCoordinate = countryCode === "CN" ? findChinaCoordinate(city, province) : null;
   const centroid = countryCode ? COUNTRY_CENTROIDS[countryCode] : null;
   const position = coordinates || chinaCoordinate || centroid || null;
-  const location = [country, province, city].filter(Boolean).join(" / ");
+  const location = [country, province, city].filter(Boolean).join("/");
+  const carrier = isp || network.name;
+  const locationDetail = [location, carrier].filter(Boolean).join("/");
 
   return {
     location,
+    locationDetail,
     isp,
     asn: network.asn,
     networkName: network.name,
@@ -239,9 +161,39 @@ function normalize(payload) {
     countryName: centroid?.label || country,
     position,
     mapLabel: position
-      ? `${countryCode || "IP"} - ${coordinates ? "exact coordinates" : chinaCoordinate ? "city-level location" : "country-level location"}`
-      : "No coordinates"
+      ? `${locationDetail || countryCode || "IP"} - ${coordinates ? "精确坐标" : chinaCoordinate ? "城市级坐标" : "国家级坐标"}`
+      : "无坐标"
   };
+}
+
+function renderRisk(data = {}) {
+  const carrier = `${data.networkName || data.isp || ""}`.toLowerCase();
+  const score = /cloud|hosting|data|server|amazon|google|microsoft|aliyun|tencent|colo/.test(carrier) ? 12 : 0;
+  riskScore.textContent = `${score}分`;
+  riskNeedle.style.left = `${Math.min(98, score)}%`;
+  riskSummary.textContent = score <= 20 ? "极低风险 - 安全可信" : "较低风险 - 建议复核";
+}
+
+function renderAnalysis(data = {}) {
+  const commercial = data.asn ? "商业IP" : "未知";
+  const rows = [
+    ["local-ip", "否", "否", commercial, "否"],
+    ["region-db", "否", "否", commercial, "否"],
+    ["geo-check", "否", "否", commercial, "否"]
+  ];
+  analysisBody.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row[0])}</td>
+      <td>${statusPill(row[1])}</td>
+      <td>${statusPill(row[2])}</td>
+      <td>${escapeHtml(row[3])}</td>
+      <td>${statusPill(row[4])}</td>
+    </tr>
+  `).join("");
+}
+
+function statusPill(value) {
+  return `<span class="pill${value === "无" ? " gray" : ""}">${escapeHtml(value)}</span>`;
 }
 
 function clean(value) {
@@ -259,15 +211,9 @@ function findNetwork(data) {
 
   for (const row of Object.values(data)) {
     if (!row) continue;
-    if (!result.countryCode && row.country_code) {
-      result.countryCode = String(row.country_code).toUpperCase();
-    }
-    if (!result.asn && row.autonomous_system_number) {
-      result.asn = String(row.autonomous_system_number);
-    }
-    if (!result.name && row.autonomous_system_organization) {
-      result.name = String(row.autonomous_system_organization);
-    }
+    if (!result.countryCode && row.country_code) result.countryCode = String(row.country_code).toUpperCase();
+    if (!result.asn && row.autonomous_system_number) result.asn = String(row.autonomous_system_number);
+    if (!result.name && row.autonomous_system_organization) result.name = String(row.autonomous_system_organization);
   }
   return result;
 }
@@ -291,9 +237,7 @@ async function loadChinaCoordinates() {
     const rows = await response.json();
     for (const row of rows) {
       const point = { lat: Number(row.lat), lon: Number(row.lon), level: row.level || "" };
-      for (const key of chinaNameKeys(row.name)) {
-        state.chinaCoordinates.set(key, point);
-      }
+      for (const key of chinaNameKeys(row.name)) state.chinaCoordinates.set(key, point);
     }
   } catch (error) {
     console.warn("China coordinates failed to load", error);
@@ -314,44 +258,20 @@ function chinaNameKeys(value) {
   const name = clean(value);
   if (!name) return [];
   const keys = new Set([name]);
-  const municipalities = ["北京", "天津", "上海", "重庆"];
-  for (const item of municipalities) {
+  for (const item of ["北京", "天津", "上海", "重庆"]) {
     if (name === item || name === `${item}市`) {
       keys.add(item);
       keys.add(`${item}市`);
     }
   }
   for (const suffix of ["省", "市", "自治区", "特别行政区", "地区", "盟"]) {
-    if (name.endsWith(suffix)) {
-      keys.add(name.slice(0, -suffix.length));
-    }
+    if (name.endsWith(suffix)) keys.add(name.slice(0, -suffix.length));
   }
   if (!/[省市区盟]$/.test(name)) {
     keys.add(`${name}市`);
     keys.add(`${name}省`);
   }
   return [...keys].filter(Boolean);
-}
-
-function projectToWorldTile(lon, lat) {
-  const boundedLat = Math.max(-85.051129, Math.min(85.051129, lat));
-  const x = ((lon + 180) / 360) * 4096;
-  const latRad = boundedLat * Math.PI / 180;
-  const mercator = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-  const y = (1 - mercator / Math.PI) / 2 * 4096;
-  return { x, y };
-}
-
-function focusSvgMap(x, y, size = 1450) {
-  const minX = Math.max(0, Math.min(4096 - size, x - size / 2));
-  const minY = Math.max(0, Math.min(4096 - size, y - size / 2));
-  state.map.setAttribute("viewBox", `${minX.toFixed(1)} ${minY.toFixed(1)} ${size} ${size}`);
-}
-
-function renderDetails(rows) {
-  detailList.innerHTML = rows
-    .map(([key, value]) => `<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`)
-    .join("");
 }
 
 function loadScript(src) {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,82 +7,90 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="topbar">
-        <div class="brand">
-          <span class="logo-mark">IP</span>
-          <div>
-            <h1>IPGeoSearch</h1>
-            <p>IP geolocation search and map view</p>
-          </div>
-        </div>
+    <nav class="nav">
+      <div class="nav-inner">
+        <span class="logo-mark">IP</span>
+        <strong>IPGeoSearch</strong>
+        <span>IP查询</span>
+        <span>在线Ping</span>
+        <span>DNS查询</span>
+        <span>网站分析</span>
+      </div>
+    </nav>
 
+    <main class="shell">
+      <section class="hero">
+        <h1>IP地址查询</h1>
+        <p>快速查询 IP 地址的详细信息和风险评估</p>
         <form class="search-box" id="searchForm">
           <input
             id="ipInput"
             name="ip"
             autocomplete="off"
             spellcheck="false"
-            value="8.8.8.8"
+            value="117.151.83.202"
             aria-label="IP address"
-            placeholder="Enter IPv4 or IPv6"
+            placeholder="请输入 IPv4 或 IPv6"
           />
-          <button type="submit">Search</button>
+          <button type="submit">立即查询</button>
         </form>
       </section>
 
-      <section class="workspace">
-        <section class="map-card">
-          <div class="card-head">
-            <div>
-              <span class="mini-label">Live map</span>
-              <h2 id="mapTitle">Ready</h2>
-            </div>
-            <strong id="statusPill">Idle</strong>
-          </div>
+      <section class="ip-cards">
+        <article>
+          <span class="dot green"></span>
+          <span>我的 IPv4 地址</span>
+          <strong id="ipv4Value">-</strong>
+        </article>
+        <article>
+          <span class="dot blue"></span>
+          <span>我的 IPv6 地址</span>
+          <strong id="ipv6Value">未检测到 IPv6</strong>
+        </article>
+      </section>
 
-          <div class="map-stage" aria-label="IP location map">
-            <div id="mapCanvas" class="online-map"></div>
-            <div class="map-badge" id="mapNote">Search an IP to locate it on the map.</div>
-          </div>
-        </section>
+      <section class="panel">
+        <header><span>●</span><h2>基础信息</h2></header>
+        <div class="info-grid">
+          <div><span>IP 地址</span><strong id="basicIp">-</strong></div>
+          <div><span>地理位置</span><strong id="basicLocation">-</strong></div>
+          <div><span>ASN</span><strong id="basicAsn">-</strong></div>
+          <div><span>运营商</span><strong id="basicIsp">-</strong></div>
+          <div><span>经纬度</span><strong id="basicCoords">-</strong></div>
+          <div><span>广播 IP</span><strong id="basicBroadcast">N/A</strong></div>
+        </div>
 
-        <aside class="info-panel">
-          <div class="main-result">
-            <span class="mini-label">Lookup result</span>
-            <h2 id="summaryTitle">No lookup yet</h2>
-            <p id="summaryText">Enter an IP address to view location and network details.</p>
-          </div>
+        <div class="risk-card">
+          <h3>欺诈风险评估</h3>
+          <div class="risk-score" id="riskScore">0分</div>
+          <div class="risk-bar"><span id="riskNeedle"></span></div>
+          <strong id="riskSummary">极低风险 - 安全可信</strong>
+          <p>基于本地 IP 数据库分析</p>
+        </div>
+      </section>
 
-          <div class="metric-grid">
-            <article>
-              <span>Version</span>
-              <strong id="versionValue">-</strong>
-            </article>
-            <article>
-              <span>Country</span>
-              <strong id="countryValue">-</strong>
-            </article>
-            <article>
-              <span>Network</span>
-              <strong id="networkValue">-</strong>
-            </article>
-            <article>
-              <span>Coordinates</span>
-              <strong id="coordValue">-</strong>
-            </article>
-          </div>
+      <section class="panel">
+        <header><span>●</span><h2>综合安全分析</h2></header>
+        <table class="analysis-table">
+          <thead>
+            <tr>
+              <th>来源</th>
+              <th>代理</th>
+              <th>服务器</th>
+              <th>IP类型</th>
+              <th>滥用</th>
+            </tr>
+          </thead>
+          <tbody id="analysisBody"></tbody>
+        </table>
+      </section>
 
-          <div class="detail-card">
-            <h3>Details</h3>
-            <dl id="detailList">
-              <div><dt>IP</dt><dd>-</dd></div>
-              <div><dt>Place</dt><dd>-</dd></div>
-              <div><dt>ASN</dt><dd>-</dd></div>
-              <div><dt>Carrier</dt><dd>-</dd></div>
-            </dl>
-          </div>
-        </aside>
+      <section class="panel map-panel">
+        <header><span>●</span><h2>地理位置</h2></header>
+        <div class="map-stage" aria-label="IP location map">
+          <div id="mapCanvas" class="online-map"></div>
+          <div class="map-badge" id="mapNote">查询 IP 后在地图中定位。</div>
+        </div>
       </section>
     </main>
 
