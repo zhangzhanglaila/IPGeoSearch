@@ -94,6 +94,8 @@ async function initOfflineMap() {
   `;
   state.map = mapCanvas.querySelector(".svg-world-map");
   state.marker = mapCanvas.querySelector("#mapMarker");
+  const chinaCenter = projectToWorldTile(104.19, 35.86);
+  focusSvgMap(chinaCenter.x, chinaCenter.y, 920);
   mapNote.textContent = "Offline map is active. Search an IP to locate it.";
 }
 
@@ -149,7 +151,7 @@ function render(payload) {
   ]);
 
   if (data.position) {
-    updateMap(data.position.lat, data.position.lon, payload.ip);
+    updateMap(data.position.lat, data.position.lon, payload.ip, data.countryCode);
   }
 }
 
@@ -171,14 +173,14 @@ function renderError(error) {
   ]);
 }
 
-function updateMap(lat, lon, label) {
+function updateMap(lat, lon, label, countryCode = "") {
   if (!state.map) return;
 
   if (state.provider === "offline") {
     const position = projectToWorldTile(lon, lat);
     state.marker.setAttribute("transform", `translate(${position.x.toFixed(1)} ${position.y.toFixed(1)})`);
     state.marker.setAttribute("visibility", "visible");
-    focusSvgMap(position.x, position.y);
+    focusSvgMap(position.x, position.y, countryCode === "CN" ? 920 : 1450);
     return;
   }
 
@@ -286,8 +288,7 @@ function projectToWorldTile(lon, lat) {
   return { x, y };
 }
 
-function focusSvgMap(x, y) {
-  const size = 1450;
+function focusSvgMap(x, y, size = 1450) {
   const minX = Math.max(0, Math.min(4096 - size, x - size / 2));
   const minY = Math.max(0, Math.min(4096 - size, y - size / 2));
   state.map.setAttribute("viewBox", `${minX.toFixed(1)} ${minY.toFixed(1)} ${size} ${size}`);
