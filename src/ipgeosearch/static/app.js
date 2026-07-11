@@ -12,6 +12,9 @@ const exportCsvButton = document.querySelector("#exportCsvButton");
 const exportJsonButton = document.querySelector("#exportJsonButton");
 const batchResults = document.querySelector("#batchResults");
 const historyList = document.querySelector("#historyList");
+const clearHistoryButton = document.querySelector("#clearHistoryButton");
+const copyDnsButton = document.querySelector("#copyDnsButton");
+const dnsResults = document.querySelector("#dnsResults");
 const ipv4Value = document.querySelector("#ipv4Value");
 const ipv6Value = document.querySelector("#ipv6Value");
 const basicIp = document.querySelector("#basicIp");
@@ -57,7 +60,8 @@ const state = {
   chinaCoordinates: new Map(),
   chinaCoordinatesReady: null,
   mapReady: null,
-  lastBatchRows: []
+  lastBatchRows: [],
+  lastDns: null
 };
 
 state.chinaCoordinatesReady = loadChinaCoordinates();
@@ -122,10 +126,30 @@ document.querySelectorAll(".copy-button").forEach((button) => {
 });
 
 historyList.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-ip]");
+  const button = event.target.closest("button[data-history-action]");
   if (!button) return;
-  ipInput.value = button.dataset.ip;
-  form.requestSubmit();
+  const target = button.dataset.historyTarget || "";
+  if (button.dataset.historyAction === "query") {
+    ipInput.value = target;
+    form.requestSubmit();
+    return;
+  }
+  if (button.dataset.historyAction === "favorite") {
+    toggleHistoryFavorite(target);
+    return;
+  }
+  if (button.dataset.historyAction === "remove") {
+    removeHistoryItem(target);
+  }
+});
+
+clearHistoryButton.addEventListener("click", () => {
+  localStorage.removeItem(HISTORY_KEY);
+  renderHistory();
+});
+
+copyDnsButton.addEventListener("click", async () => {
+  await copyText(formatDnsText(state.lastDns), copyDnsButton);
 });
 
 batchResults.addEventListener("click", (event) => {
@@ -171,7 +195,11 @@ function applyTheme(theme) {
 
 async function lookupTarget(target) {
   const resolved = await resolveTarget(target);
-  return lookupIp(resolved.ip, resolved);
+  const lookupPromise = lookupIp(resolved.ip, resolved);
+  const dnsPromise = resolved.resolved ? lookupDns(resolved.input).catch((error) => ({ error: error.message })) : Promise.resolve(null);
+  const result = await lookupPromise;
+  result.data.dns = await dnsPromise;
+  return result;
 }
 
 async function lookupIp(ip, resolved = { input: ip, ip, addresses: [ip], resolved: false }) {
@@ -198,6 +226,13 @@ async function resolveTarget(target) {
   const ip = chooseAddress(payload.addresses || []);
   if (!ip) throw new Error("域名没有可查询的 IP");
   return { input: target, ip, addresses: payload.addresses || [ip], resolved: true };
+}
+
+async function lookupDns(host) {
+  const response = await fetch(`/dns?host=${encodeURIComponent(host)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "DNS 查询失败");
+  return payload;
 }
 
 async function runBatchLookup() {
@@ -266,9 +301,10 @@ function render(payload, data) {
   basicBroadcast.textContent = "N/A";
   renderRisk(data);
   renderAnalysis(data);
+  renderDns(data.dns);
 
   if (data.position) {
-    updateMap(data.position.lat, data.position.lon, data.locationDetail || payload.ip);
+    updateMap(data.position.lat, data.position.lon, mapPopupHtml(data));
     mapNote.textContent = data.mapLabel;
   } else {
     mapNote.textContent = "未找到可用于地图定位的坐标。";
@@ -282,6 +318,7 @@ function renderError(error) {
   basicIsp.textContent = "-";
   basicIpType.textContent = "-";
   basicCoords.textContent = "-";
+  renderDns(null);
   mapNote.textContent = error.message;
 }
 
@@ -315,12 +352,46 @@ function renderHistory() {
     return;
   }
   historyList.innerHTML = rows.map((row) => `
-    <button type="button" data-ip="${escapeHtml(row.target || row.ip)}">
-      <strong>${escapeHtml(row.label || row.ip)}</strong>
-      <span>${escapeHtml(row.location || "-")}</span>
-      <span>${escapeHtml(row.coords || "-")}</span>
-    </button>
+    <div class="history-item${row.favorite ? " favorite" : ""}">
+      <button type="button" class="history-main" data-history-action="query" data-history-target="${escapeHtml(row.target || row.ip)}">
+        <strong>${escapeHtml(row.label || row.ip)}</strong>
+        <span>${escapeHtml(row.location || "-")}</span>
+        <span>${escapeHtml(row.coords || "-")}</span>
+      </button>
+      <div class="history-actions">
+        <button type="button" data-history-action="favorite" data-history-target="${escapeHtml(row.target || row.ip)}">${row.favorite ? "已收藏" : "收藏"}</button>
+        <button type="button" data-history-action="remove" data-history-target="${escapeHtml(row.target || row.ip)}">删除</button>
+      </div>
+    </div>
   `).join("");
+}
+
+function renderDns(payload) {
+  state.lastDns = payload;
+  if (!payload) {
+    dnsResults.innerHTML = `<div class="dns-empty">输入域名后显示 A / AAAA / CNAME / MX / NS 记录。</div>`;
+    return;
+  }
+  if (payload.error) {
+    dnsResults.innerHTML = `<div class="dns-empty">${escapeHtml(payload.error)}</div>`;
+    return;
+  }
+
+  const types = ["A", "AAAA", "CNAME", "MX", "NS"];
+  const rows = types.map((type) => {
+    const records = payload.records?.[type] || [];
+    const values = records.length
+      ? records.map((record) => `<span>${escapeHtml(record.value)}${record.ttl ? ` / TTL ${escapeHtml(record.ttl)}` : ""}</span>`).join("")
+      : `<span>暂无记录</span>`;
+    return `
+      <div class="dns-record">
+        <strong>${type}</strong>
+        <div class="dns-values">${values}</div>
+      </div>
+    `;
+  }).join("");
+
+  dnsResults.innerHTML = rows;
 }
 
 function updateMap(lat, lon, label) {
@@ -341,7 +412,7 @@ function updateMapMany(rows) {
     bounds.push(position);
     L.marker(position)
       .addTo(state.markerLayer || state.map)
-      .bindPopup(`${escapeHtml(row.inputLabel || row.ip)}<br>${escapeHtml(row.location || "-")}`);
+      .bindPopup(mapPopupHtml(row));
   }
   if (bounds.length === 1) {
     state.map.setView(bounds[0], 8);
@@ -417,9 +488,32 @@ function toBatchRow(input, data) {
     ip: data.resolvedIp || data.ip,
     location: data.locationDetail || data.location || data.countryName || "-",
     coords: data.coords || "",
+    ipType: data.ipType || "",
+    riskScore: data.riskScore,
+    asn: data.asn || "",
+    isp: data.isp || data.networkName || "",
     position: data.position || null,
     addresses: data.resolvedAddresses || []
   };
+}
+
+function mapPopupHtml(row) {
+  const title = row.inputLabel || (row.resolvedFromDomain ? `${row.input} -> ${row.resolvedIp}` : row.ip) || "IP 位置";
+  const ip = row.ip || row.resolvedIp || "";
+  const location = row.locationDetail || row.location || row.countryName || "-";
+  const type = row.ipType || "-";
+  const risk = Number.isFinite(row.riskScore) ? `${row.riskScore}分` : "-";
+  const coords = row.coords || (row.position ? `${row.position.lon.toFixed(6)}, ${row.position.lat.toFixed(6)}` : "-");
+  return `
+    <div class="map-popup">
+      <strong>${escapeHtml(title)}</strong>
+      <span>IP：${escapeHtml(ip || "-")}</span>
+      <span>位置：${escapeHtml(location)}</span>
+      <span>类型：${escapeHtml(type)}</span>
+      <span>风险：${escapeHtml(risk)}</span>
+      <span>坐标：${escapeHtml(coords)}</span>
+    </div>
+  `;
 }
 
 function renderRisk(data = {}) {
@@ -512,18 +606,32 @@ function statusPill(value) {
 
 function addHistory(data) {
   const label = data.resolvedFromDomain ? `${data.input} -> ${data.resolvedIp}` : data.ip || data.ipAddress || "";
+  const existingRows = readHistory();
+  const existing = existingRows.find((item) => (item.target || item.ip) === (data.input || data.ip || data.ipAddress || ""));
   const row = {
     ip: data.resolvedIp || data.ip || data.ipAddress || "",
     target: data.input || data.ip || data.ipAddress || "",
     label,
     location: data.locationDetail || data.location || "-",
-    coords: data.coords || ""
+    coords: data.coords || "",
+    favorite: Boolean(existing?.favorite)
   };
   if (!row.target) return;
-  const rows = readHistory().filter((item) => (item.target || item.ip) !== row.target);
+  const rows = existingRows.filter((item) => (item.target || item.ip) !== row.target);
   rows.unshift(row);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(rows.slice(0, MAX_HISTORY)));
-  renderHistory();
+  writeHistory(rows);
+}
+
+function toggleHistoryFavorite(target) {
+  const rows = readHistory().map((row) => {
+    if ((row.target || row.ip) !== target) return row;
+    return { ...row, favorite: !row.favorite };
+  });
+  writeHistory(rows);
+}
+
+function removeHistoryItem(target) {
+  writeHistory(readHistory().filter((row) => (row.target || row.ip) !== target));
 }
 
 function exportBatch(format) {
@@ -572,10 +680,29 @@ function csvCell(value) {
 function readHistory() {
   try {
     const rows = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-    return Array.isArray(rows) ? rows : [];
+    return Array.isArray(rows) ? sortHistory(rows) : [];
   } catch {
     return [];
   }
+}
+
+function writeHistory(rows) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(sortHistory(rows).slice(0, MAX_HISTORY)));
+  renderHistory();
+}
+
+function sortHistory(rows) {
+  return [...rows].sort((left, right) => Number(Boolean(right.favorite)) - Number(Boolean(left.favorite)));
+}
+
+function formatDnsText(payload) {
+  if (!payload || payload.error) return "";
+  const lines = [`host: ${payload.host}`, `server: ${payload.server || "-"}`];
+  for (const type of ["A", "AAAA", "CNAME", "MX", "NS"]) {
+    const values = (payload.records?.[type] || []).map((record) => record.value).join(", ") || "-";
+    lines.push(`${type}: ${values}`);
+  }
+  return lines.join("\n");
 }
 
 async function copyText(text, button) {

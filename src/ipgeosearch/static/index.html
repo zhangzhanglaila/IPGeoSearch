@@ -77,6 +77,7 @@
           <header>
             <span>●</span>
             <h2>查询历史</h2>
+            <button type="button" class="mini-action" id="clearHistoryButton">清空</button>
           </header>
           <div class="history-list" id="historyList" aria-live="polite"></div>
         </article>
@@ -117,6 +118,17 @@
         </div>
       </section>
 
+      <section class="panel dns-panel">
+        <header>
+          <span>●</span>
+          <h2>DNS 查询</h2>
+          <button type="button" class="mini-action" id="copyDnsButton">复制</button>
+        </header>
+        <div class="dns-results" id="dnsResults" aria-live="polite">
+          <div class="dns-empty">输入域名后显示 A / AAAA / CNAME / MX / NS 记录。</div>
+        </div>
+      </section>
+
       <section class="panel map-panel">
         <header><span>●</span><h2>地理位置</h2></header>
         <div class="map-stage" aria-label="IP location map">
@@ -153,6 +165,11 @@
             <strong>解析域名</strong>
             <code>GET /resolve?host=github.com</code>
             <span>返回域名解析到的 IPv4/IPv6 地址列表。</span>
+          </article>
+          <article>
+            <strong>DNS 记录</strong>
+            <code>GET /dns?host=github.com</code>
+            <span>返回 A、AAAA、CNAME、MX、NS 等 DNS 记录。</span>
           </article>
           <article>
             <strong>健康检查</strong>

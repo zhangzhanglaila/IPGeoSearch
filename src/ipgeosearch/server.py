@@ -7,8 +7,10 @@ import ipaddress
 import json
 import mimetypes
 import os
+import random
 import re
 import socket
+import struct
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -19,6 +21,15 @@ from .service import IPGeoSearch
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 DEFAULT_OFFLINE_MAP_ROOT = Path("D:/iPhotron-LocalPhotoAlbumManager/src/maps")
 HOSTNAME_PATTERN = re.compile(r"^(?=.{1,253}$)(?!-)[A-Za-z0-9.-]+(?<!-)$")
+DNS_RECORD_TYPES = {
+    "A": 1,
+    "AAAA": 28,
+    "CNAME": 5,
+    "MX": 15,
+    "NS": 2,
+}
+DNS_TYPE_NAMES = {value: key for key, value in DNS_RECORD_TYPES.items()}
+DNS_TIMEOUT_SECONDS = 3.0
 
 
 def _offline_map_root() -> Path:
@@ -28,6 +39,151 @@ def _offline_map_root() -> Path:
 def _offline_map_available() -> bool:
     root = _offline_map_root()
     return (root / "style.json").is_file() and (root / "tiles" / "tiles.json").is_file()
+
+
+def _encode_dns_name(host: str) -> bytes:
+    return b"".join(bytes([len(part.encode("idna"))]) + part.encode("idna") for part in host.split(".")) + b"\x00"
+
+
+def _read_dns_name(message: bytes, offset: int) -> tuple[str, int]:
+    labels: list[str] = []
+    jumped = False
+    next_offset = offset
+    seen_offsets: set[int] = set()
+
+    while True:
+        if offset >= len(message):
+            raise ValueError("invalid dns name offset")
+        length = message[offset]
+        if length & 0xC0 == 0xC0:
+            if offset + 1 >= len(message):
+                raise ValueError("invalid dns name pointer")
+            pointer = ((length & 0x3F) << 8) | message[offset + 1]
+            if pointer in seen_offsets:
+                raise ValueError("recursive dns name pointer")
+            seen_offsets.add(pointer)
+            if not jumped:
+                next_offset = offset + 2
+            offset = pointer
+            jumped = True
+            continue
+        if length == 0:
+            offset += 1
+            if not jumped:
+                next_offset = offset
+            break
+
+        offset += 1
+        label = message[offset : offset + length]
+        if len(label) != length:
+            raise ValueError("truncated dns name")
+        try:
+            labels.append(label.decode("idna"))
+        except UnicodeError:
+            labels.append(label.decode("ascii", errors="replace"))
+        offset += length
+
+    return ".".join(labels), next_offset
+
+
+def _decode_dns_record(message: bytes, record_type: int, rdata_offset: int, rdlength: int) -> str:
+    data = message[rdata_offset : rdata_offset + rdlength]
+    if record_type == DNS_RECORD_TYPES["A"] and rdlength == 4:
+        return str(ipaddress.IPv4Address(data))
+    if record_type == DNS_RECORD_TYPES["AAAA"] and rdlength == 16:
+        return str(ipaddress.IPv6Address(data))
+    if record_type in (DNS_RECORD_TYPES["CNAME"], DNS_RECORD_TYPES["NS"]):
+        value, _ = _read_dns_name(message, rdata_offset)
+        return value
+    if record_type == DNS_RECORD_TYPES["MX"] and rdlength >= 3:
+        preference = struct.unpack("!H", data[:2])[0]
+        exchange, _ = _read_dns_name(message, rdata_offset + 2)
+        return f"{preference} {exchange}"
+    return ""
+
+
+def _query_dns_server(host: str, record_type: int, dns_server: str) -> list[dict[str, object]]:
+    transaction_id = random.randrange(0, 65536)
+    header = struct.pack("!HHHHHH", transaction_id, 0x0100, 1, 0, 0, 0)
+    question = _encode_dns_name(host) + struct.pack("!HH", record_type, 1)
+    packet = header + question
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        client.settimeout(DNS_TIMEOUT_SECONDS)
+        client.sendto(packet, (dns_server, 53))
+        response, _ = client.recvfrom(4096)
+
+    if len(response) < 12:
+        raise ValueError("dns response too short")
+
+    response_id, flags, question_count, answer_count, _, _ = struct.unpack("!HHHHHH", response[:12])
+    if response_id != transaction_id:
+        raise ValueError("dns transaction mismatch")
+    if flags & 0x000F:
+        raise ValueError(f"dns server returned code {flags & 0x000F}")
+
+    offset = 12
+    for _ in range(question_count):
+        _, offset = _read_dns_name(response, offset)
+        offset += 4
+
+    records: list[dict[str, object]] = []
+    for _ in range(answer_count):
+        _, offset = _read_dns_name(response, offset)
+        if offset + 10 > len(response):
+            raise ValueError("truncated dns answer")
+        answer_type, answer_class, ttl, rdlength = struct.unpack("!HHIH", response[offset : offset + 10])
+        offset += 10
+        rdata_offset = offset
+        offset += rdlength
+        record_name = DNS_TYPE_NAMES.get(answer_type)
+        if answer_class != 1 or not record_name:
+            continue
+        value = _decode_dns_record(response, answer_type, rdata_offset, rdlength)
+        if value:
+            records.append({"type": record_name, "value": value, "ttl": ttl, "source": "dns"})
+    return records
+
+
+def _append_dns_record(records: dict[str, list[dict[str, object]]], record: dict[str, object]) -> None:
+    record_type = str(record.get("type", ""))
+    value = str(record.get("value", ""))
+    if record_type not in records or not value:
+        return
+    if any(row.get("value") == value for row in records[record_type]):
+        return
+    records[record_type].append(record)
+
+
+def _resolve_dns_records(host: str) -> dict[str, object]:
+    dns_server = os.getenv("DNS_SERVER", "223.5.5.5")
+    records: dict[str, list[dict[str, object]]] = {name: [] for name in DNS_RECORD_TYPES}
+    errors: dict[str, str] = {}
+
+    for record_name, record_type in DNS_RECORD_TYPES.items():
+        try:
+            for record in _query_dns_server(host, record_type, dns_server):
+                _append_dns_record(records, record)
+        except Exception as exc:
+            errors[record_name] = str(exc)
+
+    try:
+        rows = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        for row in rows:
+            address = row[4][0]
+            record_type = "AAAA" if ":" in address else "A"
+            _append_dns_record(records, {"type": record_type, "value": address, "ttl": None, "source": "system"})
+    except socket.gaierror as exc:
+        if not records["A"] and not records["AAAA"]:
+            errors["system"] = exc.strerror or str(exc)
+
+    return {
+        "host": host,
+        "server": dns_server,
+        "records": records,
+        "errors": errors,
+        "addresses": sorted({row["value"] for record_type in ("A", "AAAA") for row in records[record_type]}),
+    }
 
 
 class LookupHandler(BaseHTTPRequestHandler):
@@ -72,6 +228,10 @@ class LookupHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/resolve":
             self._send_resolve(parse_qs(parsed.query))
+            return
+
+        if parsed.path == "/dns":
+            self._send_dns(parse_qs(parsed.query))
             return
 
         if parsed.path == "/map-config":
@@ -186,6 +346,25 @@ class LookupHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"host": host, "addresses": addresses})
+
+    def _send_dns(self, query: dict[str, list[str]]) -> None:
+        host = query.get("host", [""])[0].strip().strip(".")
+        if not host:
+            self._send_json({"error": "missing host query parameter"}, status=400)
+            return
+
+        try:
+            ipaddress.ip_address(host)
+            self._send_json({"error": "dns query expects a hostname"}, status=400)
+            return
+        except ValueError:
+            pass
+
+        if not HOSTNAME_PATTERN.match(host) or ".." in host:
+            self._send_json({"error": "invalid hostname"}, status=400)
+            return
+
+        self._send_json(_resolve_dns_records(host))
 
     def _send_offline_map_style(self) -> None:
         root = _offline_map_root()
