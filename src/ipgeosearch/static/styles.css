@@ -290,6 +290,10 @@ body.theme-dark {
   display: none;
 }
 
+.search-box.is-hidden {
+  display: none;
+}
+
 .tool-panel {
   overflow: hidden;
   border: 3px solid var(--outline);

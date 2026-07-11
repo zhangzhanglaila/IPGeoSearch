@@ -168,6 +168,7 @@ window.addEventListener("load", () => {
 function setMode(mode) {
   const isBatch = mode === "batch";
   state.mode = isBatch ? "batch" : "single";
+  form.classList.toggle("is-hidden", isBatch);
   multiTools.classList.toggle("is-hidden", !isBatch);
   singleModeButton.classList.toggle("active", !isBatch);
   batchModeButton.classList.toggle("active", isBatch);
@@ -248,23 +249,39 @@ async function runBatchLookup() {
   renderBatchResults(targets.map((target) => ({ input: target, loading: true })));
   try {
     await Promise.all([state.chinaCoordinatesReady, state.mapReady]);
-    const rows = await Promise.all(targets.map(async (target) => {
+    const groups = await Promise.all(targets.map(async (target) => {
       try {
-        const { data } = await lookupTarget(target);
-        return toBatchRow(target, data);
+        return await lookupTargetRows(target);
       } catch (error) {
-        return { input: target, ip: "-", error: error.message };
+        return [{ input: target, ip: "-", error: error.message }];
       }
     }));
+    const rows = groups.flat();
     state.lastBatchRows = rows;
     renderBatchResults(rows);
     updateMapMany(rows.filter((row) => row.position));
     rows.filter((row) => !row.error).forEach(addHistory);
     const located = rows.filter((row) => row.position).length;
-    mapNote.textContent = `批量查询完成：${rows.length} 个目标，${located} 个已定位到地图。`;
+    mapNote.textContent = `批量查询完成：${targets.length} 个输入，${rows.length} 条结果，${located} 个已定位到地图。`;
+    if (located) scrollMapIntoView();
   } finally {
     batchButton.disabled = false;
   }
+}
+
+async function lookupTargetRows(target) {
+  const resolved = await resolveTarget(target);
+  const addresses = resolved.resolved ? uniqueItems(resolved.addresses || [resolved.ip]).filter(isIpAddress) : [resolved.ip];
+  if (!addresses.length) throw new Error("域名没有可查询的 IP");
+  return Promise.all(addresses.map(async (ip) => {
+    const { data } = await lookupIp(ip, {
+      input: resolved.input,
+      ip,
+      addresses,
+      resolved: resolved.resolved
+    });
+    return toBatchRow(target, data);
+  }));
 }
 
 async function initMap() {
@@ -433,6 +450,10 @@ function focusBatchRow(row) {
     }
   });
   mapNote.textContent = `${row.inputLabel || row.ip} - 已在地图中定位。`;
+}
+
+function scrollMapIntoView() {
+  document.querySelector(".map-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function normalize(payload) {
@@ -605,7 +626,7 @@ function statusPill(value) {
 }
 
 function addHistory(data) {
-  const label = data.resolvedFromDomain ? `${data.input} -> ${data.resolvedIp}` : data.ip || data.ipAddress || "";
+  const label = data.inputLabel || (data.resolvedFromDomain ? `${data.input} -> ${data.resolvedIp}` : data.ip || data.ipAddress || "");
   const existingRows = readHistory();
   const existing = existingRows.find((item) => (item.target || item.ip) === (data.input || data.ip || data.ipAddress || ""));
   const row = {
