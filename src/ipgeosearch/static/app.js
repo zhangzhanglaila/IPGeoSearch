@@ -17,11 +17,13 @@ const basicIp = document.querySelector("#basicIp");
 const basicLocation = document.querySelector("#basicLocation");
 const basicAsn = document.querySelector("#basicAsn");
 const basicIsp = document.querySelector("#basicIsp");
+const basicIpType = document.querySelector("#basicIpType");
 const basicCoords = document.querySelector("#basicCoords");
 const basicBroadcast = document.querySelector("#basicBroadcast");
 const riskScore = document.querySelector("#riskScore");
 const riskNeedle = document.querySelector("#riskNeedle");
 const riskSummary = document.querySelector("#riskSummary");
+const riskTags = document.querySelector("#riskTags");
 const analysisBody = document.querySelector("#analysisBody");
 const mapNote = document.querySelector("#mapNote");
 
@@ -238,6 +240,7 @@ function render(payload, data) {
   basicLocation.textContent = data.locationDetail || data.location || "-";
   basicAsn.textContent = data.asn ? `ASN${data.asn}` : "-";
   basicIsp.textContent = data.isp || data.networkName || "-";
+  basicIpType.textContent = data.ipType || "-";
   basicCoords.textContent = data.position ? `${data.position.lon.toFixed(6)}, ${data.position.lat.toFixed(6)}` : "-";
   basicBroadcast.textContent = "N/A";
   renderRisk(data);
@@ -256,6 +259,7 @@ function renderError(error) {
   basicLocation.textContent = error.message;
   basicAsn.textContent = "-";
   basicIsp.textContent = "-";
+  basicIpType.textContent = "-";
   basicCoords.textContent = "-";
   mapNote.textContent = error.message;
 }
@@ -359,6 +363,7 @@ function normalize(payload) {
   const location = [country, province, city].filter(Boolean).join("/");
   const carrier = isp || network.name;
   const locationDetail = [location, carrier].filter(Boolean).join("/");
+  const profile = classifyIp({ carrier, isp, networkName: network.name, asn: network.asn });
 
   return {
     ip: payload.ip,
@@ -369,6 +374,12 @@ function normalize(payload) {
     networkName: network.name,
     countryCode,
     countryName: centroid?.label || country,
+    ipType: profile.type,
+    riskScore: profile.score,
+    riskTags: profile.tags,
+    isServerLike: profile.serverLike,
+    isProxyLike: profile.proxyLike,
+    isAbuseLike: profile.abuseLike,
     position,
     coords: position ? `${position.lon.toFixed(6)}, ${position.lat.toFixed(6)}` : "",
     mapLabel: position
@@ -391,19 +402,23 @@ function toBatchRow(input, data) {
 }
 
 function renderRisk(data = {}) {
-  const carrier = `${data.networkName || data.isp || ""}`.toLowerCase();
-  const score = /cloud|hosting|data|server|amazon|google|microsoft|aliyun|tencent|colo/.test(carrier) ? 12 : 0;
+  const score = Number.isFinite(data.riskScore) ? data.riskScore : 0;
   riskScore.textContent = `${score}分`;
   riskNeedle.style.left = `${Math.min(98, score)}%`;
-  riskSummary.textContent = score <= 20 ? "极低风险 - 安全可信" : "较低风险 - 建议复核";
+  riskSummary.textContent = score <= 20 ? "极低风险 - 安全可信" : score <= 45 ? "中低风险 - 建议复核" : "较高风险 - 重点关注";
+  const tags = data.riskTags?.length ? data.riskTags : ["常规网络"];
+  riskTags.innerHTML = tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
 }
 
 function renderAnalysis(data = {}) {
-  const commercial = data.asn ? "商业IP" : "未知";
+  const ipType = data.ipType || (data.asn ? "商业 IP" : "未知");
+  const proxy = data.proxyLike ? "疑似" : "否";
+  const server = data.isServerLike ? "是" : "否";
+  const abuse = data.abuseLike ? "疑似" : "否";
   const rows = [
-    ["local-ip", "否", "否", commercial, "否"],
-    ["region-db", "否", "否", commercial, "否"],
-    ["geo-check", "否", "否", commercial, "否"]
+    ["local-ip", proxy, server, ipType, abuse],
+    ["region-db", proxy, server, ipType, abuse],
+    ["geo-check", proxy, server, ipType, abuse]
   ];
   analysisBody.innerHTML = rows.map((row) => `
     <tr>
@@ -414,6 +429,60 @@ function renderAnalysis(data = {}) {
       <td>${statusPill(row[4])}</td>
     </tr>
   `).join("");
+}
+
+function classifyIp(data = {}) {
+  const text = `${data.carrier || ""} ${data.isp || ""} ${data.networkName || ""}`.toLowerCase();
+  const tags = [];
+  let score = 0;
+  let type = data.asn ? "商业 IP" : "未知";
+  let serverLike = false;
+  let proxyLike = false;
+  let abuseLike = false;
+
+  if (/cloudflare|akamai|fastly|cdn|edgecast|cachefly/.test(text)) {
+    type = "CDN / 边缘网络";
+    tags.push("CDN 网络");
+    serverLike = true;
+    score += 18;
+  } else if (/cloud|hosting|host|server|data center|datacenter|colo|amazon|aws|google|microsoft|azure|oracle|digitalocean|linode|ovh|aliyun|alibaba|tencent|huawei/.test(text)) {
+    type = "云服务 / 机房 IP";
+    tags.push("云服务或机房");
+    serverLike = true;
+    score += 24;
+  } else if (/mobile|cmcc|chinamobile|移动|cellular|wireless/.test(text)) {
+    type = "移动网络";
+    tags.push("移动网络");
+    score += 4;
+  } else if (/telecom|unicom|broadband|宽带|电信|联通|cable|fiber|dsl/.test(text)) {
+    type = "宽带网络";
+    tags.push("宽带网络");
+    score += 2;
+  }
+
+  if (/vpn|proxy|tor|anonymous|privacy|crawler|scraper/.test(text)) {
+    tags.push("疑似代理/VPN");
+    proxyLike = true;
+    score += 34;
+  }
+
+  if (/abuse|spam|blacklist|malware|botnet/.test(text)) {
+    tags.push("疑似滥用风险");
+    abuseLike = true;
+    score += 30;
+  }
+
+  if (data.asn) tags.push(`ASN${data.asn}`);
+  if (!tags.length) tags.push("常规网络");
+
+  return {
+    type,
+    score: Math.min(95, score),
+    tags: uniqueItems(tags),
+    serverLike,
+    proxyLike,
+    abuseLike
+  };
 }
 
 function statusPill(value) {

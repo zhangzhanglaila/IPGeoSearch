@@ -589,6 +589,27 @@ body {
   font-size: 18px;
 }
 
+.risk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.risk-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  color: var(--outline);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .risk-card p {
   margin: 8px 0 0;
   color: var(--muted);
@@ -655,6 +676,45 @@ body {
   font-family: inherit;
 }
 
+.api-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 28px;
+}
+
+.api-grid article {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.api-grid strong {
+  color: var(--blue);
+  font-size: 18px;
+}
+
+.api-grid code {
+  display: block;
+  padding: 10px;
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  color: var(--outline);
+  background: #fff8d7;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.api-grid span {
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.5;
+}
+
 @media (max-width: 760px) {
   .nav-inner {
     gap: 14px;
@@ -678,7 +738,8 @@ body {
   .search-box,
   .ip-cards,
   .info-grid,
-  .utility-grid {
+  .utility-grid,
+  .api-grid {
     grid-template-columns: 1fr;
   }
 
@@ -701,11 +762,13 @@ body {
   }
 
   .info-grid,
+  .api-grid,
   .analysis-table {
     margin: 18px;
   }
 
-  .info-grid {
+  .info-grid,
+  .api-grid {
     padding: 0;
   }
 

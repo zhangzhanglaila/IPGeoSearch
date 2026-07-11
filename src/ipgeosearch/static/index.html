@@ -101,6 +101,7 @@
           <div><span>地理位置</span><strong id="basicLocation">-</strong><button type="button" class="copy-button" data-copy-target="basicLocation">复制</button></div>
           <div><span>ASN</span><strong id="basicAsn">-</strong><button type="button" class="copy-button" data-copy-target="basicAsn">复制</button></div>
           <div><span>运营商</span><strong id="basicIsp">-</strong><button type="button" class="copy-button" data-copy-target="basicIsp">复制</button></div>
+          <div><span>IP 类型</span><strong id="basicIpType">-</strong><button type="button" class="copy-button" data-copy-target="basicIpType">复制</button></div>
           <div><span>经纬度</span><strong id="basicCoords">-</strong><button type="button" class="copy-button" data-copy-target="basicCoords">复制</button></div>
           <div><span>广播 IP</span><strong id="basicBroadcast">N/A</strong><button type="button" class="copy-button" data-copy-target="basicBroadcast">复制</button></div>
         </div>
@@ -110,6 +111,7 @@
           <div class="risk-score" id="riskScore">0分</div>
           <div class="risk-bar"><span id="riskNeedle"></span></div>
           <strong id="riskSummary">极低风险 - 安全可信</strong>
+          <div class="risk-tags" id="riskTags"></div>
           <p>基于本地 IP 数据库分析</p>
         </div>
       </section>
@@ -136,6 +138,27 @@
           </thead>
           <tbody id="analysisBody"></tbody>
         </table>
+      </section>
+
+      <section class="panel api-panel">
+        <header><span>●</span><h2>API 文档</h2></header>
+        <div class="api-grid">
+          <article>
+            <strong>查询 IP</strong>
+            <code>GET /lookup?ip=8.8.8.8</code>
+            <span>返回 IP 版本、归属地、ASN、网络和坐标相关结果。</span>
+          </article>
+          <article>
+            <strong>解析域名</strong>
+            <code>GET /resolve?host=github.com</code>
+            <span>返回域名解析到的 IPv4/IPv6 地址列表。</span>
+          </article>
+          <article>
+            <strong>健康检查</strong>
+            <code>GET /health</code>
+            <span>用于确认本地服务是否正常运行。</span>
+          </article>
+        </div>
       </section>
     </main>
 
