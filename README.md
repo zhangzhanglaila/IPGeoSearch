@@ -1,8 +1,8 @@
-# IPGeoSearch / IP 地理搜索
+# ip-geo-search / IP 地理搜索
 
-IPGeoSearch is a local IP and domain geolocation search tool with a playful web interface, online map display, batch lookup, history, and export support.
+ip-geo-search is a local IP and domain geolocation search tool with a playful web interface, online map display, batch lookup, history, and export support.
 
-IPGeoSearch 是一个本地 IP 与域名地理位置查询工具，提供动漫风前端页面、在线地图定位、批量查询、查询历史和结果导出能力。
+ip-geo-search 是一个本地 IP 与域名地理位置查询工具，提供动漫风前端页面、在线地图定位、批量查询、查询历史和结果导出能力。
 
 ## Features / 功能
 
