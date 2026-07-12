@@ -379,6 +379,15 @@ body.theme-dark {
   padding: 0 14px;
 }
 
+.tool-actions .batch-primary {
+  min-width: 148px;
+  min-height: 50px;
+  padding: 0 24px;
+  background: var(--yellow);
+  box-shadow: 5px 5px 0 rgba(38, 50, 79, 0.16);
+  font-size: 17px;
+}
+
 .tool-actions button:first-child {
   background: var(--yellow);
 }

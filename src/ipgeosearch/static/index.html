@@ -63,7 +63,7 @@
               placeholder="每行一个 IP 或域名，例如：&#10;117.151.83.202&#10;github.com&#10;8.8.8.8"
             ></textarea>
             <div class="tool-actions">
-              <button type="button" id="batchButton">批量定位</button>
+              <button type="button" id="batchButton" class="batch-primary">批量定位</button>
               <button type="button" id="lineToggleButton" aria-pressed="false">连线显示</button>
               <button type="button" id="clearBatchButton">清空</button>
               <button type="button" id="copyBatchButton">复制结果</button>
@@ -87,12 +87,12 @@
       <section class="ip-cards">
         <article>
           <span class="dot green"></span>
-          <span>我的 IPv4 地址</span>
+          <span id="ipv4Label">我的 IPv4 地址</span>
           <strong id="ipv4Value">-</strong>
         </article>
         <article>
           <span class="dot blue"></span>
-          <span>我的 IPv6 地址</span>
+          <span id="ipv6Label">我的 IPv6 地址</span>
           <strong id="ipv6Value">未检测到 IPv6</strong>
         </article>
       </section>

@@ -16,6 +16,8 @@ const historyList = document.querySelector("#historyList");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const copyDnsButton = document.querySelector("#copyDnsButton");
 const dnsResults = document.querySelector("#dnsResults");
+const ipv4Label = document.querySelector("#ipv4Label");
+const ipv6Label = document.querySelector("#ipv6Label");
 const ipv4Value = document.querySelector("#ipv4Value");
 const ipv6Value = document.querySelector("#ipv6Value");
 const basicIp = document.querySelector("#basicIp");
@@ -143,6 +145,10 @@ historyList.addEventListener("click", (event) => {
   if (!button) return;
   const target = button.dataset.historyTarget || "";
   if (button.dataset.historyAction === "query") {
+    if (state.mode === "batch") {
+      addTargetToBatchInput(target);
+      return;
+    }
     ipInput.value = target;
     form.requestSubmit();
     return;
@@ -320,6 +326,8 @@ async function initMap() {
 }
 
 function render(payload, data) {
+  ipv4Label.textContent = "查询 IPv4 地址";
+  ipv6Label.textContent = "查询 IPv6 地址";
   ipv4Value.textContent = payload.ip_version === 4 ? payload.ip : "-";
   ipv6Value.textContent = payload.ip_version === 6 ? payload.ip : "未检测到 IPv6";
   basicIp.textContent = data.resolvedFromDomain ? `${data.input} -> ${payload.ip}` : payload.ip;
@@ -483,6 +491,17 @@ function updateLineToggle() {
   lineToggleButton.classList.toggle("active", state.connectBatchPoints);
   lineToggleButton.textContent = state.connectBatchPoints ? "隐藏连线" : "连线显示";
   lineToggleButton.setAttribute("aria-pressed", String(state.connectBatchPoints));
+}
+
+function addTargetToBatchInput(target) {
+  if (!target) return;
+  const rows = uniqueItems([
+    ...batchInput.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+    target
+  ]);
+  batchInput.value = rows.join("\n");
+  batchInput.focus();
+  mapNote.textContent = `${target} 已加入批量输入框，点击“批量定位”开始查询。`;
 }
 
 function normalize(payload) {
