@@ -276,7 +276,6 @@ async function runBatchLookup() {
       }
     }));
     const rows = groups.flat();
-    assignMapIndexes(rows);
     state.lastBatchRows = rows;
     renderBatchResults(rows);
     updateMapMany(rows.filter((row) => row.position));
@@ -368,14 +367,13 @@ function renderBatchResults(rows) {
   }
   batchResults.innerHTML = rows.map((row, index) => {
     if (row.loading) {
-      return `<div class="batch-row"><span class="batch-pin">-</span><strong>${escapeHtml(row.input)}</strong><span>查询中...</span><span>-</span></div>`;
+      return `<div class="batch-row"><strong>${escapeHtml(row.input)}</strong><span>查询中...</span><span>-</span></div>`;
     }
     if (row.error) {
-      return `<div class="batch-row error"><span class="batch-pin">-</span><strong>${escapeHtml(row.input)}</strong><span>${escapeHtml(row.error)}</span><span>-</span></div>`;
+      return `<div class="batch-row error"><strong>${escapeHtml(row.input)}</strong><span>${escapeHtml(row.error)}</span><span>-</span></div>`;
     }
     return `
       <div class="batch-row">
-        <span class="batch-pin">${row.mapIndex ? escapeHtml(row.mapIndex) : "-"}</span>
         <strong>${escapeHtml(row.inputLabel || row.input)}</strong>
         <span>${escapeHtml(row.location || "-")}</span>
         <span>${escapeHtml(row.coords || "-")}</span>
@@ -461,11 +459,11 @@ function updateMapMany(rows) {
     L.marker(position)
       .addTo(state.markerLayer || state.map)
       .bindPopup(mapPopupHtml(row))
-      .bindTooltip(escapeHtml(row.mapIndex || routePoints.length), {
+      .bindTooltip(escapeHtml(mapMarkerLabel(row)), {
         permanent: true,
-        direction: "top",
-        offset: [0, -10],
-        className: "map-number-tooltip"
+        direction: "right",
+        offset: [12, 0],
+        className: "map-label-tooltip"
       });
   }
   if (state.connectBatchPoints && routePoints.length > 1) {
@@ -601,18 +599,6 @@ function mapPopupHtml(row) {
 
 function mapMarkerLabel(row) {
   return row.inputLabel || (row.resolvedFromDomain ? `${row.input} -> ${row.resolvedIp}` : row.ip) || "IP 位置";
-}
-
-function assignMapIndexes(rows) {
-  let mapIndex = 1;
-  for (const row of rows) {
-    if (!row.position) {
-      delete row.mapIndex;
-      continue;
-    }
-    row.mapIndex = mapIndex;
-    mapIndex += 1;
-  }
 }
 
 function renderRisk(data = {}) {
