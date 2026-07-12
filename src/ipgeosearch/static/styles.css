@@ -405,7 +405,7 @@ body.theme-dark {
 
 .batch-row {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.35fr) auto auto;
+  grid-template-columns: auto minmax(130px, 0.8fr) minmax(0, 1.35fr) auto auto;
   gap: 10px;
   align-items: center;
   min-height: 46px;
@@ -413,6 +413,18 @@ body.theme-dark {
   border: 2px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.batch-pin {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  color: var(--outline);
+  background: var(--yellow);
+  font-weight: 950;
 }
 
 .batch-row button {
@@ -809,6 +821,25 @@ body.theme-dark {
 
 .leaflet-container {
   font-family: inherit;
+}
+
+.map-label-tooltip,
+.map-number-tooltip {
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  color: var(--outline);
+  background: #fffdf7;
+  box-shadow: 3px 3px 0 rgba(38, 50, 79, 0.18);
+  font-weight: 950;
+}
+
+.map-number-tooltip {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 2px 8px;
+  color: #111827;
+  background: var(--yellow);
+  text-align: center;
 }
 
 .map-popup {

@@ -276,6 +276,7 @@ async function runBatchLookup() {
       }
     }));
     const rows = groups.flat();
+    assignMapIndexes(rows);
     state.lastBatchRows = rows;
     renderBatchResults(rows);
     updateMapMany(rows.filter((row) => row.position));
@@ -342,7 +343,7 @@ function render(payload, data) {
   renderDns(data.dns);
 
   if (data.position) {
-    updateMap(data.position.lat, data.position.lon, mapPopupHtml(data));
+    updateMap(data.position.lat, data.position.lon, mapPopupHtml(data), mapMarkerLabel(data));
     mapNote.textContent = data.mapLabel;
   } else {
     mapNote.textContent = "未找到可用于地图定位的坐标。";
@@ -367,13 +368,14 @@ function renderBatchResults(rows) {
   }
   batchResults.innerHTML = rows.map((row, index) => {
     if (row.loading) {
-      return `<div class="batch-row"><strong>${escapeHtml(row.input)}</strong><span>查询中...</span><span>-</span></div>`;
+      return `<div class="batch-row"><span class="batch-pin">-</span><strong>${escapeHtml(row.input)}</strong><span>查询中...</span><span>-</span></div>`;
     }
     if (row.error) {
-      return `<div class="batch-row error"><strong>${escapeHtml(row.input)}</strong><span>${escapeHtml(row.error)}</span><span>-</span></div>`;
+      return `<div class="batch-row error"><span class="batch-pin">-</span><strong>${escapeHtml(row.input)}</strong><span>${escapeHtml(row.error)}</span><span>-</span></div>`;
     }
     return `
       <div class="batch-row">
+        <span class="batch-pin">${row.mapIndex ? escapeHtml(row.mapIndex) : "-"}</span>
         <strong>${escapeHtml(row.inputLabel || row.input)}</strong>
         <span>${escapeHtml(row.location || "-")}</span>
         <span>${escapeHtml(row.coords || "-")}</span>
@@ -432,12 +434,18 @@ function renderDns(payload) {
   dnsResults.innerHTML = rows;
 }
 
-function updateMap(lat, lon, label) {
+function updateMap(lat, lon, popupHtml, label) {
   if (!state.map || !window.L) return;
   state.markerLayer?.clearLayers();
   const position = [lat, lon];
   state.marker = L.marker(position).addTo(state.markerLayer || state.map);
-  state.marker.bindPopup(label).openPopup();
+  state.marker.bindPopup(popupHtml).openPopup();
+  state.marker.bindTooltip(escapeHtml(label || "IP 位置"), {
+    permanent: true,
+    direction: "right",
+    offset: [12, 0],
+    className: "map-label-tooltip"
+  });
   state.map.setView(position, 8);
 }
 
@@ -452,7 +460,13 @@ function updateMapMany(rows) {
     routePoints.push(position);
     L.marker(position)
       .addTo(state.markerLayer || state.map)
-      .bindPopup(mapPopupHtml(row));
+      .bindPopup(mapPopupHtml(row))
+      .bindTooltip(escapeHtml(row.mapIndex || routePoints.length), {
+        permanent: true,
+        direction: "top",
+        offset: [0, -10],
+        className: "map-number-tooltip"
+      });
   }
   if (state.connectBatchPoints && routePoints.length > 1) {
     L.polyline(routePoints, {
@@ -583,6 +597,22 @@ function mapPopupHtml(row) {
       <span>坐标：${escapeHtml(coords)}</span>
     </div>
   `;
+}
+
+function mapMarkerLabel(row) {
+  return row.inputLabel || (row.resolvedFromDomain ? `${row.input} -> ${row.resolvedIp}` : row.ip) || "IP 位置";
+}
+
+function assignMapIndexes(rows) {
+  let mapIndex = 1;
+  for (const row of rows) {
+    if (!row.position) {
+      delete row.mapIndex;
+      continue;
+    }
+    row.mapIndex = mapIndex;
+    mapIndex += 1;
+  }
 }
 
 function renderRisk(data = {}) {
