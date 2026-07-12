@@ -44,6 +44,7 @@ const MAP_LABEL_OPTIONS = {
   offset: [0, -18],
   className: "map-label-tooltip"
 };
+const MAP_WORLD_COPY_OFFSETS = [-1440, -1080, -720, -360, 0, 360, 720, 1080, 1440];
 
 const COUNTRY_CENTROIDS = {
   US: { lat: 39.5, lon: -98.35, label: "United States" },
@@ -318,7 +319,8 @@ async function initMap() {
       center: [30.65, 114.32],
       zoom: 7,
       zoomControl: true,
-      attributionControl: false
+      attributionControl: false,
+      worldCopyJump: true
     });
     L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", {
       subdomains: ["1", "2", "3", "4"],
@@ -443,9 +445,8 @@ function updateMap(lat, lon, popupHtml, label) {
   if (!state.map || !window.L) return;
   state.markerLayer?.clearLayers();
   const position = [lat, lon];
-  state.marker = L.marker(position).addTo(state.markerLayer || state.map);
-  state.marker.bindPopup(popupHtml, MAP_POPUP_OPTIONS).openPopup();
-  state.marker.bindTooltip(escapeHtml(label || "IP 位置"), MAP_LABEL_OPTIONS);
+  state.marker = addMapMarkerCopies(lat, lon, popupHtml, label || "IP 位置").primaryMarker;
+  state.marker?.openPopup();
   state.map.setView(position, 8, { animate: false });
 }
 
@@ -458,23 +459,40 @@ function updateMapMany(rows) {
     const position = [row.position.lat, row.position.lon];
     bounds.push(position);
     routePoints.push(position);
-    L.marker(position)
-      .addTo(state.markerLayer || state.map)
-      .bindPopup(mapPopupHtml(row), MAP_POPUP_OPTIONS)
-      .bindTooltip(escapeHtml(mapMarkerLabel(row)), MAP_LABEL_OPTIONS);
+    addMapMarkerCopies(row.position.lat, row.position.lon, mapPopupHtml(row), mapMarkerLabel(row));
   }
   if (state.connectBatchPoints && routePoints.length > 1) {
-    L.polyline(routePoints, {
-      color: "#ff4f9a",
-      weight: 4,
-      opacity: 0.88,
-      dashArray: "10 8"
-    }).addTo(state.markerLayer || state.map);
+    addRouteLineCopies(routePoints);
   }
   if (bounds.length === 1) {
     state.map.setView(bounds[0], 8, { animate: false });
   } else {
     state.map.fitBounds(bounds, { padding: [70, 70], maxZoom: 8, animate: false });
+  }
+}
+
+function addMapMarkerCopies(lat, lon, popupHtml, label) {
+  let primaryMarker = null;
+  for (const offset of MAP_WORLD_COPY_OFFSETS) {
+    const marker = L.marker([lat, lon + offset])
+      .addTo(state.markerLayer || state.map)
+      .bindPopup(popupHtml, MAP_POPUP_OPTIONS)
+      .bindTooltip(escapeHtml(label || "IP 位置"), MAP_LABEL_OPTIONS);
+    marker.ipGeoPrimaryLon = lon;
+    marker.ipGeoPrimaryLat = lat;
+    if (offset === 0) primaryMarker = marker;
+  }
+  return { primaryMarker };
+}
+
+function addRouteLineCopies(routePoints) {
+  for (const offset of MAP_WORLD_COPY_OFFSETS) {
+    L.polyline(routePoints.map(([lat, lon]) => [lat, lon + offset]), {
+      color: "#ff4f9a",
+      weight: 4,
+      opacity: 0.88,
+      dashArray: "10 8"
+    }).addTo(state.markerLayer || state.map);
   }
 }
 
@@ -485,7 +503,9 @@ function focusBatchRow(row) {
   state.markerLayer?.eachLayer((layer) => {
     const point = layer.getLatLng?.();
     if (!point) return;
-    if (Math.abs(point.lat - row.position.lat) < 0.000001 && Math.abs(point.lng - row.position.lon) < 0.000001) {
+    const primaryLat = layer.ipGeoPrimaryLat ?? point.lat;
+    const primaryLon = layer.ipGeoPrimaryLon ?? point.lng;
+    if (Math.abs(primaryLat - row.position.lat) < 0.000001 && Math.abs(primaryLon - row.position.lon) < 0.000001) {
       layer.openPopup(point);
     }
   });
