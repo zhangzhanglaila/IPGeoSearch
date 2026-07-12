@@ -812,12 +812,17 @@ body.theme-dark {
 }
 
 .map-label-tooltip {
+  max-width: 260px;
+  white-space: normal;
   border: 2px solid var(--outline);
   border-radius: 8px;
   color: var(--outline);
   background: #fffdf7;
   box-shadow: 3px 3px 0 rgba(38, 50, 79, 0.18);
   font-weight: 950;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .map-popup {

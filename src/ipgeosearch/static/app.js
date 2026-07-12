@@ -37,6 +37,13 @@ const mapNote = document.querySelector("#mapNote");
 const HISTORY_KEY = "ipgeosearch.history";
 const THEME_KEY = "ipgeosearch.theme";
 const MAX_HISTORY = 8;
+const MAP_POPUP_OPTIONS = { autoPan: false, keepInView: false };
+const MAP_LABEL_OPTIONS = {
+  permanent: true,
+  direction: "top",
+  offset: [0, -18],
+  className: "map-label-tooltip"
+};
 
 const COUNTRY_CENTROIDS = {
   US: { lat: 39.5, lon: -98.35, label: "United States" },
@@ -437,14 +444,9 @@ function updateMap(lat, lon, popupHtml, label) {
   state.markerLayer?.clearLayers();
   const position = [lat, lon];
   state.marker = L.marker(position).addTo(state.markerLayer || state.map);
-  state.marker.bindPopup(popupHtml).openPopup();
-  state.marker.bindTooltip(escapeHtml(label || "IP 位置"), {
-    permanent: true,
-    direction: "right",
-    offset: [12, 0],
-    className: "map-label-tooltip"
-  });
-  state.map.setView(position, 8);
+  state.marker.bindPopup(popupHtml, MAP_POPUP_OPTIONS).openPopup();
+  state.marker.bindTooltip(escapeHtml(label || "IP 位置"), MAP_LABEL_OPTIONS);
+  state.map.setView(position, 8, { animate: false });
 }
 
 function updateMapMany(rows) {
@@ -458,13 +460,8 @@ function updateMapMany(rows) {
     routePoints.push(position);
     L.marker(position)
       .addTo(state.markerLayer || state.map)
-      .bindPopup(mapPopupHtml(row))
-      .bindTooltip(escapeHtml(mapMarkerLabel(row)), {
-        permanent: true,
-        direction: "right",
-        offset: [12, 0],
-        className: "map-label-tooltip"
-      });
+      .bindPopup(mapPopupHtml(row), MAP_POPUP_OPTIONS)
+      .bindTooltip(escapeHtml(mapMarkerLabel(row)), MAP_LABEL_OPTIONS);
   }
   if (state.connectBatchPoints && routePoints.length > 1) {
     L.polyline(routePoints, {
@@ -475,21 +472,21 @@ function updateMapMany(rows) {
     }).addTo(state.markerLayer || state.map);
   }
   if (bounds.length === 1) {
-    state.map.setView(bounds[0], 8);
+    state.map.setView(bounds[0], 8, { animate: false });
   } else {
-    state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
+    state.map.fitBounds(bounds, { padding: [70, 70], maxZoom: 8, animate: false });
   }
 }
 
 function focusBatchRow(row) {
   if (!state.map || !window.L || !row.position) return;
   const position = [row.position.lat, row.position.lon];
-  state.map.setView(position, 8);
+  state.map.setView(position, 8, { animate: false });
   state.markerLayer?.eachLayer((layer) => {
     const point = layer.getLatLng?.();
     if (!point) return;
     if (Math.abs(point.lat - row.position.lat) < 0.000001 && Math.abs(point.lng - row.position.lon) < 0.000001) {
-      layer.openPopup();
+      layer.openPopup(point);
     }
   });
   mapNote.textContent = `${row.inputLabel || row.ip} - 已在地图中定位。`;
