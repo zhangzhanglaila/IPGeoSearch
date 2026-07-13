@@ -1,7 +1,7 @@
 [project]
 name = "ip-geo-search"
 version = "0.1.0"
-description = "Offline IP geolocation search over ip2region, ip-location-db, and optional GeoIP2 MMDB files."
+description = "Local IP and domain geolocation search with online maps, batch lookup, and network intelligence."
 requires-python = ">=3.10"
 dependencies = []
 

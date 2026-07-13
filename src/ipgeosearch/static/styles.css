@@ -66,6 +66,7 @@ body.theme-dark {
   white-space: nowrap;
 }
 
+.nav-action,
 .theme-toggle {
   margin-left: auto;
   min-height: 36px;
@@ -78,6 +79,16 @@ body.theme-dark {
   font-weight: 950;
   cursor: pointer;
   box-shadow: 3px 3px 0 rgba(38, 50, 79, 0.16);
+}
+
+.nav-action {
+  margin-left: auto;
+  color: var(--outline);
+  background: #fff8d7;
+}
+
+.nav-action + .theme-toggle {
+  margin-left: 0;
 }
 
 .logo-mark {
@@ -353,6 +364,7 @@ body.theme-dark {
 }
 
 .tool-actions button,
+.tool-actions select,
 .file-action,
 .mini-action,
 .copy-button,
@@ -392,9 +404,17 @@ body.theme-dark {
   background: #fff8d7;
 }
 
-.tool-actions button {
+.tool-actions button,
+.tool-actions select {
   min-height: 38px;
   padding: 0 14px;
+}
+
+.tool-actions select {
+  max-width: 148px;
+  color: var(--outline);
+  background: #fff;
+  font-weight: 900;
 }
 
 .tool-actions .batch-primary {
@@ -990,6 +1010,11 @@ body.theme-dark .theme-toggle {
   background: var(--yellow);
 }
 
+body.theme-dark .nav-action {
+  color: #111827;
+  background: var(--cyan);
+}
+
 body.theme-dark .hero h1 {
   text-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6), 7px 7px 0 rgba(48, 213, 200, 0.18);
 }
@@ -1005,6 +1030,7 @@ body.theme-dark .panel {
 body.theme-dark .mode-switch button,
 body.theme-dark .search-box input,
 body.theme-dark .tool-actions button,
+body.theme-dark .tool-actions select,
 body.theme-dark .file-action,
 body.theme-dark .mini-action,
 body.theme-dark .copy-button,

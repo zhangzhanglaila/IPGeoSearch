@@ -2,12 +2,15 @@ const form = document.querySelector("#searchForm");
 const ipInput = document.querySelector("#ipInput");
 const singleModeButton = document.querySelector("#singleModeButton");
 const batchModeButton = document.querySelector("#batchModeButton");
+const apiKeyButton = document.querySelector("#apiKeyButton");
 const themeToggleButton = document.querySelector("#themeToggleButton");
 const multiTools = document.querySelector("#multiTools");
 const batchInput = document.querySelector("#batchInput");
 const batchButton = document.querySelector("#batchButton");
 const batchFileInput = document.querySelector("#batchFileInput");
+const batchFilter = document.querySelector("#batchFilter");
 const retryFailedButton = document.querySelector("#retryFailedButton");
+const heatmapToggleButton = document.querySelector("#heatmapToggleButton");
 const lineToggleButton = document.querySelector("#lineToggleButton");
 const clearBatchButton = document.querySelector("#clearBatchButton");
 const copyBatchButton = document.querySelector("#copyBatchButton");
@@ -40,6 +43,7 @@ const mapNote = document.querySelector("#mapNote");
 
 const HISTORY_KEY = "ipgeosearch.history";
 const THEME_KEY = "ipgeosearch.theme";
+const API_KEY_STORAGE = "ipgeosearch.apiKey";
 const MAX_HISTORY = 8;
 const MAP_POPUP_OPTIONS = { autoPan: false, keepInView: false };
 const MAP_LABEL_OPTIONS = {
@@ -72,10 +76,12 @@ const state = {
   map: null,
   marker: null,
   markerLayer: null,
+  heatLayer: null,
   chinaCoordinates: new Map(),
   chinaCoordinatesReady: null,
   mapReady: null,
   connectBatchPoints: false,
+  showHeatmap: false,
   autoQuery: false,
   lastBatchRows: [],
   lastDns: null,
@@ -90,6 +96,18 @@ renderHistory();
 
 singleModeButton.addEventListener("click", () => setMode("single"));
 batchModeButton.addEventListener("click", () => setMode("batch"));
+apiKeyButton.addEventListener("click", () => {
+  const current = localStorage.getItem(API_KEY_STORAGE) || "";
+  const next = window.prompt("输入 API Key；留空并确认可清除。", current);
+  if (next === null) return;
+  if (next.trim()) {
+    localStorage.setItem(API_KEY_STORAGE, next.trim());
+    mapNote.textContent = "API Key 已保存到当前浏览器。";
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE);
+    mapNote.textContent = "API Key 已清除。";
+  }
+});
 themeToggleButton.addEventListener("click", () => {
   const nextTheme = document.body.classList.contains("theme-dark") ? "light" : "dark";
   localStorage.setItem(THEME_KEY, nextTheme);
@@ -123,6 +141,10 @@ form.addEventListener("submit", async (event) => {
 
 batchButton.addEventListener("click", runBatchLookup);
 
+batchFilter.addEventListener("change", () => {
+  renderCurrentBatchView();
+});
+
 batchFileInput.addEventListener("change", async () => {
   const file = batchFileInput.files?.[0];
   if (!file) return;
@@ -141,10 +163,16 @@ retryFailedButton.addEventListener("click", () => {
   runBatchLookup();
 });
 
+heatmapToggleButton.addEventListener("click", () => {
+  state.showHeatmap = !state.showHeatmap;
+  updateHeatmapToggle();
+  renderCurrentBatchView();
+});
+
 lineToggleButton.addEventListener("click", () => {
   state.connectBatchPoints = !state.connectBatchPoints;
   updateLineToggle();
-  const locatedRows = state.lastBatchRows.filter((row) => row.position);
+  const locatedRows = currentBatchRows().filter((row) => row.position);
   if (locatedRows.length) updateMapMany(locatedRows);
   if (state.connectBatchPoints && locatedRows.length < 2) {
     mapNote.textContent = "至少需要两个已定位结果才能连线。";
@@ -273,7 +301,7 @@ async function lookupTarget(target) {
 }
 
 async function lookupIp(ip, resolved = { input: ip, ip, addresses: [ip], resolved: false }) {
-  const response = await fetch(`/lookup?ip=${encodeURIComponent(ip)}`);
+  const response = await apiFetch(`/lookup?ip=${encodeURIComponent(ip)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "查询失败");
   await state.chinaCoordinatesReady;
@@ -290,7 +318,7 @@ async function resolveTarget(target) {
     return { input: target, ip: target, addresses: [target], resolved: false };
   }
 
-  const response = await fetch(`/resolve?host=${encodeURIComponent(target)}`);
+  const response = await apiFetch(`/resolve?host=${encodeURIComponent(target)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "域名解析失败");
   const ip = chooseAddress(payload.addresses || []);
@@ -299,31 +327,38 @@ async function resolveTarget(target) {
 }
 
 async function lookupDns(host) {
-  const response = await fetch(`/dns?host=${encodeURIComponent(host)}`);
+  const response = await apiFetch(`/dns?host=${encodeURIComponent(host)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "DNS 查询失败");
   return payload;
 }
 
 async function lookupIntel(ip) {
-  const response = await fetch(`/intel?ip=${encodeURIComponent(ip)}`);
+  const response = await apiFetch(`/intel?ip=${encodeURIComponent(ip)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "网络情报查询失败");
   return payload;
 }
 
 async function lookupRdap(ip) {
-  const response = await fetch(`/rdap?ip=${encodeURIComponent(ip)}`);
+  const response = await apiFetch(`/rdap?ip=${encodeURIComponent(ip)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "RDAP 查询失败");
   return payload;
 }
 
 async function lookupProbe(target) {
-  const response = await fetch(`/probe?target=${encodeURIComponent(target)}`);
+  const response = await apiFetch(`/probe?target=${encodeURIComponent(target)}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "连通性检测失败");
   return payload;
+}
+
+function apiFetch(url, options = {}) {
+  const apiKey = localStorage.getItem(API_KEY_STORAGE) || "";
+  const headers = new Headers(options.headers || {});
+  if (apiKey) headers.set("X-API-Key", apiKey);
+  return fetch(url, { ...options, headers });
 }
 
 async function runBatchLookup() {
@@ -351,9 +386,7 @@ async function runBatchLookup() {
     }));
     const rows = groups.flat();
     state.lastBatchRows = rows;
-    renderBatchStats(rows, parsedTargets);
-    renderBatchResults(rows);
-    updateMapMany(rows.filter((row) => row.position));
+    renderCurrentBatchView(parsedTargets);
     rows.filter((row) => !row.error).forEach(addHistory);
     const located = rows.filter((row) => row.position).length;
     mapNote.textContent = `批量查询完成：${targets.length} 个输入，${rows.length} 条结果，${located} 个已定位到地图。`;
@@ -382,6 +415,9 @@ async function initMap() {
   try {
     loadStyle("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
     await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+    loadScript("https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js").catch((error) => {
+      console.warn("Leaflet heat failed to load", error);
+    });
     state.map = L.map("mapCanvas", {
       center: [30.65, 114.32],
       zoom: 7,
@@ -480,6 +516,35 @@ function renderBatchStats(rows, parsed = null) {
     ${deduped ? `<span>已去重 ${deduped}</span>` : ""}
     ${topLocations.length ? `<strong>位置摘要：${topLocations.map((item) => `${escapeHtml(item.value)} ${item.count}`).join(" / ")}</strong>` : ""}
   `;
+}
+
+function renderCurrentBatchView(parsed = null) {
+  const rows = currentBatchRows();
+  renderBatchStats(rows, parsed);
+  renderBatchResults(rows);
+  const locatedRows = rows.filter((row) => row.position);
+  if (locatedRows.length) {
+    updateMapMany(locatedRows);
+  } else if (state.markerLayer) {
+    state.markerLayer.clearLayers();
+  }
+}
+
+function currentBatchRows() {
+  const filter = batchFilter?.value || "all";
+  return state.lastBatchRows.filter((row) => {
+    if (filter === "located") return Boolean(row.position);
+    if (filter === "failed") return Boolean(row.error);
+    if (filter === "highRisk") return Number(row.riskScore) >= 45;
+    if (filter === "hosting") return /机房|云服务|CDN|边缘/.test(row.ipType || "");
+    return true;
+  });
+}
+
+function updateHeatmapToggle() {
+  heatmapToggleButton.classList.toggle("active", state.showHeatmap);
+  heatmapToggleButton.textContent = state.showHeatmap ? "隐藏热力图" : "热力图";
+  heatmapToggleButton.setAttribute("aria-pressed", String(state.showHeatmap));
 }
 
 function parseTargets(text) {
@@ -665,12 +730,47 @@ function updateMapMany(rows) {
   if (state.connectBatchPoints && routePoints.length > 1) {
     addRouteLineCopies(routePoints);
   }
+  if (state.showHeatmap) {
+    addHeatmapLayer(rows);
+  }
   if (bounds.length === 1) {
     state.map.setView(bounds[0], 8, { animate: false });
   } else {
     state.map.fitBounds(bounds, { padding: [70, 70], maxZoom: 8, animate: false });
     state.map.panTo(bounds[0], { animate: false });
   }
+}
+
+function addHeatmapLayer(rows) {
+  const points = rows
+    .filter((row) => row.position)
+    .map((row) => [row.position.lat, row.position.lon, heatIntensity(row)]);
+  if (!points.length || !state.map || !window.L) return;
+
+  if (typeof L.heatLayer === "function") {
+    L.heatLayer(points, {
+      radius: 34,
+      blur: 24,
+      minOpacity: 0.28,
+      gradient: { 0.2: "#30d5c8", 0.45: "#ffd95a", 0.7: "#ff7ab6", 1: "#ff4f5e" }
+    }).addTo(state.markerLayer || state.map);
+    return;
+  }
+
+  for (const row of rows) {
+    if (!row.position) continue;
+    L.circleMarker([row.position.lat, row.position.lon], {
+      radius: 24 + heatIntensity(row) * 18,
+      stroke: false,
+      fillColor: "#ff4f9a",
+      fillOpacity: 0.22
+    }).addTo(state.markerLayer || state.map);
+  }
+}
+
+function heatIntensity(row) {
+  const score = Number(row.riskScore) || 0;
+  return Math.max(0.35, Math.min(1, 0.35 + score / 100));
 }
 
 function groupRowsByPosition(rows) {

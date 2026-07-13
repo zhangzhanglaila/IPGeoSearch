@@ -15,6 +15,7 @@
         <span>DNS查询</span>
         <span>网络情报</span>
         <span>连通性检测</span>
+        <button type="button" id="apiKeyButton" class="nav-action">API Key</button>
         <button type="button" id="themeToggleButton" class="theme-toggle" aria-pressed="false">深色</button>
       </div>
     </nav>
@@ -68,7 +69,15 @@
                 导入文件
                 <input type="file" id="batchFileInput" accept=".txt,.csv,text/plain,text/csv" />
               </label>
+              <select id="batchFilter" aria-label="批量结果筛选">
+                <option value="all">全部结果</option>
+                <option value="located">已定位</option>
+                <option value="failed">失败</option>
+                <option value="highRisk">高风险</option>
+                <option value="hosting">机房/CDN</option>
+              </select>
               <button type="button" id="retryFailedButton">重试失败</button>
+              <button type="button" id="heatmapToggleButton" aria-pressed="false">热力图</button>
               <button type="button" id="lineToggleButton" aria-pressed="false">连线显示</button>
               <button type="button" id="clearBatchButton">清空</button>
               <button type="button" id="copyBatchButton">复制结果</button>

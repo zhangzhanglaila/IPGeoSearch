@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import ipaddress
 import json
 import mimetypes
@@ -39,6 +40,7 @@ DNSBL_ZONES = (
     "bl.spamcop.net",
     "dnsbl.sorbs.net",
 )
+PUBLIC_PATHS = {"", "/", "/health", "/auth-config"}
 
 
 def _encode_dns_name(host: str) -> bytes:
@@ -379,6 +381,16 @@ class LookupHandler(BaseHTTPRequestHandler):
             self._send_file(STATIC_ROOT.joinpath(*relative_path.split("/")))
             return
 
+        query = parse_qs(parsed.query)
+
+        if parsed.path == "/auth-config":
+            self._send_json({"apiKeyRequired": bool(os.getenv("IPGEOSEARCH_API_KEY", ""))})
+            return
+
+        if self._requires_auth(parsed.path) and not self._is_authorized(query):
+            self._send_json({"error": "unauthorized"}, status=401)
+            return
+
         if parsed.path == "/health":
             self._send_json({"ok": True})
             return
@@ -388,34 +400,33 @@ class LookupHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/resolve":
-            self._send_resolve(parse_qs(parsed.query))
+            self._send_resolve(query)
             return
 
         if parsed.path == "/dns":
-            self._send_dns(parse_qs(parsed.query))
+            self._send_dns(query)
             return
 
         if parsed.path == "/rdap":
-            self._send_rdap(parse_qs(parsed.query))
+            self._send_rdap(query)
             return
 
         if parsed.path == "/reverse-dns":
-            self._send_reverse_dns(parse_qs(parsed.query))
+            self._send_reverse_dns(query)
             return
 
         if parsed.path == "/intel":
-            self._send_intel(parse_qs(parsed.query))
+            self._send_intel(query)
             return
 
         if parsed.path == "/probe":
-            self._send_probe(parse_qs(parsed.query))
+            self._send_probe(query)
             return
 
         if parsed.path != "/lookup":
             self._send_json({"error": "not found"}, status=404)
             return
 
-        query = parse_qs(parsed.query)
         ip = query.get("ip", [""])[0]
         if not ip:
             self._send_json({"error": "missing ip query parameter"}, status=400)
@@ -438,6 +449,18 @@ class LookupHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+    def _requires_auth(self, path: str) -> bool:
+        if not os.getenv("IPGEOSEARCH_API_KEY", ""):
+            return False
+        return path not in PUBLIC_PATHS and not path.startswith("/static/")
+
+    def _is_authorized(self, query: dict[str, list[str]]) -> bool:
+        expected = os.getenv("IPGEOSEARCH_API_KEY", "")
+        if not expected:
+            return True
+        supplied = self.headers.get("X-API-Key", "") or query.get("api_key", [""])[0]
+        return hmac.compare_digest(supplied, expected)
 
     def _send_json(self, payload: object, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
